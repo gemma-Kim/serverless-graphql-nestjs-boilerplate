@@ -1,0 +1,67 @@
+service: nestjs-sls-graphql-demo2
+frameworkVersion: '3'
+useDotenv: true
+plugins:
+  - serverless-offline
+  - serverless-dotenv-plugin
+  - serverless-webpack
+  - serverless-domain-manager
+  #- serverless-plugin-warmup
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  stage: ${opt:stage, 'dev'}
+  region: ap-northeast-2
+  timeout: 15
+  # environment:
+  #   NODE_ENV: ${opt:stage, 'dev'}
+  ecr:
+    images:
+      appimage:
+        path: ./
+        file: ./docker/Dockerfile.${self:provider.stage}
+
+custom:
+  serverless-offline:
+    noPrependStageInUrl: true
+    useChildProcesses: true
+  dotenv:
+    path: ./env/.env.${self:provider.stage}
+  webpack:
+    includeModules: true
+    packager: 'npm'
+  customDomain:
+    domainName: api.gemma-serverless-demo.com
+    basePath: ''
+  basePath: ''
+    domainName: api.gemma-serverless-demo.com
+    stage: ${self:provider.stage}
+    createRoute53Record: false
+    
+# warmup:
+#   events:
+#     - schedule: 'rate(5 minutes)'
+#   timeout: 60`
+
+package:
+  individually: true
+
+functions:
+  demo-graphql:
+    image:
+      name: appimage
+      command:
+        - dist/serverless.handler
+      entryPoint:
+        - '/lambda-entrypoint.sh'
+    # handler: dist/serverless.handler
+    events:
+      - http:
+          method: get
+          path: graphql
+          cors: true
+      - http:
+          method: post
+          path: graphql
+          cors: true
