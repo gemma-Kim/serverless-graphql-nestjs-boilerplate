@@ -1,0 +1,62 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14.x
+      - name: Check Stage
+        run: echo ${{ github.ref_name }}
+      - name: Install NPM dependencies
+        run: npm install
+
+      - name: Health Check
+        run: |
+          npm run test
+          npm run build
+
+      - name: Set Up Stage
+        run: |
+          if [[ "$(echo ${GITHUB_REF##*/})" == "main" ]]; then
+            echo "DEPLOY_STAGE=prod" >> $GITHUB_ENV
+            echo "ENV_FILE_NAME=PROD" >> $GITHUB_ENV
+          elif [[ "$(echo ${GITHUB_REF##*/})" == "staging" ]]; then
+            echo "DEPLOY_STAGE=staging1" >> $GITHUB_ENV
+            echo "ENV_FILE_NAME=STAGING" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_STAGE=dev" >> $GITHUB_ENV
+            echo "ENV_FILE_NAME=DEV" >> $GITHUB_ENV
+          fi
+      - name: echo
+        run: |
+          echo ${{ env.DEPLOY_STAGE }} 1
+          echo ${{ env.ENV_FILE_NAME }} 2
+      # "$(echo ${GITHUB_REF#refs/heads/})"
+      - name: Create ENV File
+        run: |
+          mkdir env
+          echo DB_HOST="${{ secrets.DB_HOST_[env.ENV_FILE_NAME] }}" >> ./env/.env.${{ env.DEPLOY_STAGE }}
+          echo DB_TYPE="${{ secrets.DB_TYPE_[env.ENV_FILE_NAME] }}" >> ./env/.env.${{ env.DEPLOY_STAGE }}
+      - name: Serverless AWS authentication
+        run: npx sls config credentials --provider aws --key ${{ secrets.AWS_ACCESS_KEY_ID }} --secret ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Deploy Lambda function - DEV
+        if: github.ref_name == 'dev' || startsWith(github.ref_name, 'feature')
+        run: sls deploy -s dev
+      # - name: Deploy Lambda function - STAGING
+      #   if: github.ref_name == 'staging'
+        run: npx sls deploy -s staging1
+      - name: Deploy Lambda function - PRODUCTION
+        if: github.ref_name == 'main'
+        run: npx sls deploy -s prod
+      - name: Deploy Stage Check
+        run: echo ${{ steps.deploy.outputs.DEPLOY_ENV }} 스테이지 배포완료
