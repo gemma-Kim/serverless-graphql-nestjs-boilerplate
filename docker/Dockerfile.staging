@@ -1,0 +1,27 @@
+FROM node:14.17.6 as builder
+ENV TZ=Asia/Seoul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /usr/app
+COPY package.json package-lock.json webpack.config.js tsconfig.json tsconfig.build.json serverless.yml ./
+COPY env/.env.staging1 .env.staging1
+COPY src ./src
+COPY script ./script
+COPY serverless.ts ./serverless.ts
+RUN npm install && npm run build && npm run gen:gql
+COPY dist ./dist
+
+FROM public.ecr.aws/lambda/nodejs:14 as runner
+ENV TZ=Asia/Seoul
+# ENV NODE_ENV=staging1
+# ENV DB_TYPE=mysql
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR ${LAMBDA_TASK_ROOT}
+COPY --from=builder /usr/app/.env.staging1 ./env/.env.staging1
+COPY --from=builder /usr/app/serverless.yml ./serverless.yml
+COPY --from=builder /usr/app/package.json ./package.json
+COPY --from=builder /usr/app/node_modules ./node_modules
+COPY --from=builder /usr/app/dist ./dist
+
+CMD [ "dist/src/serverless.handler" ] 
